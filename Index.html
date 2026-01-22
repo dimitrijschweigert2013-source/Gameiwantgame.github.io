@@ -2,15 +2,15 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Square Jump Mini Game</title>
+    <title>Subway Runner 2D</title>
     <style>
-        body { margin: 0; overflow: hidden; background: #222; font-family: sans-serif; }
-        canvas { display: block; background: #333; }
-        #ui { position: absolute; top: 20px; left: 20px; color: white; font-size: 24px; pointer-events: none; }
+        body { margin: 0; overflow: hidden; background: #333; font-family: 'Arial', sans-serif; touch-action: none; }
+        canvas { display: block; }
+        #ui { position: absolute; top: 20px; width: 100%; text-align: center; color: white; font-size: 30px; font-weight: bold; pointer-events: none; text-shadow: 2px 2px 4px #000; }
     </style>
 </head>
 <body>
-    <div id="ui">Score: 0</div>
+    <div id="ui">0</div>
     <canvas id="gameCanvas"></canvas>
 
     <script>
@@ -18,114 +18,127 @@
         const ctx = canvas.getContext('2d');
         const scoreElement = document.getElementById('ui');
 
-        // Anpassung an Bildschirmgröße
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
+        // Spiel-Konfiguration
+        const laneWidth = canvas.width / 3;
         let score = 0;
         let gameActive = true;
+        let gameSpeed = 7;
 
         const player = {
-            x: 50,
-            y: canvas.height - 70,
-            size: 40,
-            color: '#00ff88',
-            dy: 0,
-            jumpForce: 12,
-            gravity: 0.6,
-            grounded: false
+            lane: 1, // 0: Links, 1: Mitte, 2: Rechts
+            targetX: laneWidth + laneWidth / 2,
+            currentX: laneWidth + laneWidth / 2,
+            y: canvas.height - 120,
+            size: 50,
+            color: '#ffcc00'
         };
 
         const obstacles = [];
         let spawnTimer = 0;
 
-        function drawPlayer() {
-            ctx.fillStyle = player.color;
-            ctx.fillRect(player.x, player.y, player.size, player.size);
-        }
-
-        function updatePlayer() {
-            player.dy += player.gravity;
-            player.y += player.dy;
-
-            if (player.y + player.size > canvas.height - 20) {
-                player.y = canvas.height - 20 - player.size;
-                player.dy = 0;
-                player.grounded = true;
-            } else {
-                player.grounded = false;
+        // Touch Steuerung (Wischen)
+        let touchStartX = 0;
+        window.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; });
+        window.addEventListener('touchend', e => {
+            const touchEndX = e.changedTouches[0].clientX;
+            const diff = touchEndX - touchStartX;
+            if (Math.abs(diff) > 30) {
+                if (diff > 0 && player.lane < 2) player.lane++;
+                else if (diff < 0 && player.lane > 0) player.lane--;
             }
-        }
+        });
 
-        function spawnObstacle() {
+        // Tastatur Steuerung (Pfeiltasten)
+        window.addEventListener('keydown', e => {
+            if (e.key === 'ArrowLeft' && player.lane > 0) player.lane--;
+            if (e.key === 'ArrowRight' && player.lane < 2) player.lane++;
+        });
+
+        function update() {
+            if (!gameActive) return;
+
+            // Player Bewegung glätten (Interpolation)
+            player.targetX = player.lane * laneWidth + laneWidth / 2;
+            player.currentX += (player.targetX - player.currentX) * 0.2;
+
+            // Hindernisse spawnen
+            spawnTimer--;
             if (spawnTimer <= 0) {
                 obstacles.push({
-                    x: canvas.width,
-                    y: canvas.height - 60,
-                    width: 30,
-                    height: 40,
-                    speed: 5 + (score / 10) // Wird mit der Zeit schneller
+                    lane: Math.floor(Math.random() * 3),
+                    y: -100,
+                    width: laneWidth * 0.7,
+                    height: 80
                 });
-                spawnTimer = Math.random() * 60 + 50;
+                spawnTimer = Math.max(20, 60 - (score / 5)); // Wird schneller
+                gameSpeed += 0.05;
             }
-            spawnTimer--;
-        }
 
-        function updateObstacles() {
+            // Hindernisse bewegen & Kollision
             for (let i = obstacles.length - 1; i >= 0; i--) {
-                obstacles[i].x -= obstacles[i].speed;
+                const o = obstacles[i];
+                o.y += gameSpeed;
 
-                // Kollisionsabfrage
-                if (
-                    player.x < obstacles[i].x + obstacles[i].width &&
-                    player.x + player.size > obstacles[i].x &&
-                    player.y < obstacles[i].y + obstacles[i].height &&
-                    player.y + player.size > obstacles[i].y
-                ) {
-                    gameOver();
+                const obX = o.lane * laneWidth + (laneWidth - o.width) / 2;
+                
+                // Kollisionsprüfung
+                if (o.y + o.height > player.y && o.y < player.y + player.size) {
+                    if (player.lane === o.lane) {
+                        gameOver();
+                    }
                 }
 
-                // Zeichnen
-                ctx.fillStyle = '#ff4444';
-                ctx.fillRect(obstacles[i].x, obstacles[i].y, obstacles[i].width, obstacles[i].height);
-
-                if (obstacles[i].x + obstacles[i].width < 0) {
+                if (o.y > canvas.height) {
                     obstacles.splice(i, 1);
                     score++;
-                    scoreElement.innerText = `Score: ${score}`;
+                    scoreElement.innerText = score;
                 }
             }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Fahrspuren zeichnen
+            ctx.strokeStyle = '#555';
+            ctx.setLineDash([20, 20]);
+            for (let i = 1; i < 3; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * laneWidth, 0);
+                ctx.lineTo(i * laneWidth, canvas.height);
+                ctx.stroke();
+            }
+
+            // Hindernisse zeichnen
+            ctx.fillStyle = '#ff4444';
+            obstacles.forEach(o => {
+                const obX = o.lane * laneWidth + (laneWidth - o.width) / 2;
+                ctx.roundRect ? ctx.fillRoundRect(obX, o.y, o.width, o.height, 10) : ctx.fillRect(obX, o.y, o.width, o.height);
+                ctx.fillRect(obX, o.y, o.width, o.height);
+            });
+
+            // Spieler zeichnen
+            ctx.fillStyle = player.color;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = player.color;
+            ctx.fillRect(player.currentX - player.size/2, player.y, player.size, player.size);
+            ctx.shadowBlur = 0;
         }
 
         function gameOver() {
             gameActive = false;
-            alert(`Game Over! Dein Score: ${score}`);
-            location.reload(); // Einfacher Neustart
+            alert("Game Over! Score: " + score);
+            location.reload();
         }
 
         function loop() {
-            if (!gameActive) return;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Boden zeichnen
-            ctx.fillStyle = '#555';
-            ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
-
-            updatePlayer();
-            drawPlayer();
-            spawnObstacle();
-            updateObstacles();
-
+            update();
+            draw();
             requestAnimationFrame(loop);
         }
-
-        // Steuerung für Mobile (Touch) und Desktop (Leertaste)
-        window.addEventListener('touchstart', () => {
-            if (player.grounded) player.dy = -player.jumpForce;
-        });
-        window.addEventListener('keydown', (e) => {
-            if (e.code === 'Space' && player.grounded) player.dy = -player.jumpForce;
-        });
 
         loop();
     </script>
